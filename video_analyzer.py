@@ -5,13 +5,14 @@ import os
 import re
 from typing import Any, Optional
 
+import torch
 from transformers import pipeline
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="Qwen/Qwen3-VL-8B-Thinking")
-    parser.add_argument("--cache_dir", type=str, default="/work/hdd/bgea/${USER}/hyperhyper/models")
+    parser.add_argument("--cache_dir", type=str, default="")
 
     # Batch mode (default): iterate vid_to_img for clip pairs.
     parser.add_argument(
@@ -21,6 +22,12 @@ def parse_args():
         help="Folder containing per-clip *_FPV and *_Topview subfolders.",
     )
     parser.add_argument("--limit_clips", type=int, default=10, help="How many clip pairs to run (0 means no limit).")
+    parser.add_argument(
+        "--clip_prefix",
+        type=str,
+        default="Plate_1_",
+        help="Only evaluate clips whose folder names start with this prefix ('' means no filtering).",
+    )
 
     # Single mode: explicitly pick one pair (overrides --base_dir scan).
     parser.add_argument("--fpv_dir", type=str, default="", help="Run only this FPV directory if set.")
@@ -214,11 +221,13 @@ def load_ground_truth_map(labels_path: str) -> dict[str, set[tuple[str, int]]]:
     return gt
 
 
-def iter_clip_pairs(base_dir: str) -> list[tuple[str, str, str]]:
+def iter_clip_pairs(base_dir: str, clip_prefix: str = "") -> list[tuple[str, str, str]]:
     pairs: list[tuple[str, str, str]] = []
     if not os.path.isdir(base_dir):
         return pairs
     for name in sorted(os.listdir(base_dir)):
+        if clip_prefix and not name.startswith(clip_prefix):
+            continue
         if not name.endswith("_FPV"):
             continue
         fpv_dir = os.path.join(base_dir, name)
@@ -244,7 +253,7 @@ def main():
     if args.fpv_dir and args.topview_dir:
         clip_jobs = [(os.path.basename(os.path.normpath(args.fpv_dir)), args.fpv_dir, args.topview_dir)]
     else:
-        clip_jobs = iter_clip_pairs(args.base_dir)
+        clip_jobs = iter_clip_pairs(args.base_dir, clip_prefix=args.clip_prefix)
         if args.limit_clips and args.limit_clips > 0:
             clip_jobs = clip_jobs[: int(args.limit_clips)]
 
